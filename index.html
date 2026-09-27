@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0078A8">
     <style>
-        body { font-family: sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; margin: 0; }
+        body { font-family: sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; margin: 0; padding-bottom: 90px; }
         .camera-container { position: relative; display: inline-block; max-width: 100%; width: 100%; border: 3px solid #333; border-radius: 8px; overflow: hidden; background: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         
         video { width: 100%; max-width: 500px; display: block; margin: auto; transition: transform 0.3s ease; }
@@ -28,6 +28,85 @@
         
         canvas { display: none; width: 100%; max-width: 500px; margin: 20px auto; border: 3px solid #0078A8; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         .app-title { color: #0078A8; font-weight: bold; font-size: 24px; margin-bottom: 15px; }
+
+        /* ইন্সটল অ্যাপ বিগ ব্যানার স্টাইল */
+        #install-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid #334155;
+            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.7);
+            padding: 14px 20px;
+            display: none;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 9999;
+            animation: slideUp 0.4s ease-out;
+            box-sizing: border-box;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .banner-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-align: left;
+        }
+
+        .banner-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            object-fit: cover;
+            border: 1px solid #0078A8;
+        }
+
+        .banner-text h3 {
+            font-size: 14px;
+            color: #f8fafc;
+            font-weight: 600;
+            margin: 0 0 2px 0;
+        }
+
+        .banner-text p {
+            font-size: 11px;
+            color: #94a3b8;
+            margin: 0;
+        }
+
+        .banner-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .install-yes-btn {
+            background: #0078A8;
+            color: #ffffff;
+            border: none;
+            padding: 8px 14px;
+            font-weight: 700;
+            font-size: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 120, 168, 0.4);
+        }
+
+        .install-close-btn {
+            background: transparent;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            padding: 8px 10px;
+            font-size: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -47,6 +126,21 @@
 
     <canvas id="canvas"></canvas>
 
+    <!-- আকর্ষণীয় ইন্সটল অ্যাপ বিগ ব্যানার -->
+    <div id="install-banner">
+        <div class="banner-content">
+            <img src="https://res.cloudinary.com/ewu5hckc/image/upload/v1790515432/shmgpscam.png" alt="App Icon" class="banner-icon">
+            <div class="banner-text">
+                <h3>SHM-GPS-Cam</h3>
+                <p>দ্রুত ব্যবহারের জন্য অ্যাপটি ইনস্টল করুন</p>
+            </div>
+        </div>
+        <div class="banner-actions">
+            <button class="install-yes-btn" id="installBtnApp">Install</button>
+            <button class="install-close-btn" id="installCloseBtn">✕</button>
+        </div>
+    </div>
+
     <script>
         const video = document.getElementById('video');
         const overlay = document.getElementById('locationOverlay');
@@ -61,6 +155,34 @@
         
         let useFrontCamera = false;
         let currentStream = null;
+
+        // PWA Install Prompt Logic
+        let deferredPrompt;
+        const installBanner = document.getElementById('install-banner');
+        const installBtnApp = document.getElementById('installBtnApp');
+        const installCloseBtn = document.getElementById('installCloseBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBanner.style.display = 'flex';
+        });
+
+        installBtnApp.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('User accepted the install prompt');
+                }
+                deferredPrompt = null;
+                installBanner.style.display = 'none';
+            }
+        });
+
+        installCloseBtn.addEventListener('click', () => {
+            installBanner.style.display = 'none';
+        });
 
         function startCamera() {
             if (currentStream) {
@@ -178,15 +300,17 @@
         }
     </script>
 
+    <!-- Service Worker Registration Script -->
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
         }
     </script>
 
+    <!-- Footer inside Panel -->
     <div class="panel-footer" style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 20px; margin-top: 35px; flex-wrap: wrap; gap: 15px;">
         <div style="display: flex; align-items: center; gap: 10px;">
-            <img src="https://res.cloudinary.com/ewu5hckc/image/upload/v1790515432/shmgpscam.png" alt="SHM Logo" style="width: 32px; height: 32px; object-fit: contain;">
+            <img src="logo.png" alt="SHM Logo" style="width: 32px; height: 32px; object-fit: contain;">
             <span style="color: #94a3b8; font-size: 14px;">
                 &copy; <a href="https://www.shmwb.in" style="color: #4ade80; text-decoration: none; font-weight: 600;">shmwb.in</a>. All Rights Reserved.
             </span>
