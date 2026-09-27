@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHM-GPS-Cam (Front/Back)</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background-color: #f4f7f6; padding: 20px; margin: 0; }
+        .camera-container { position: relative; display: inline-block; max-width: 100%; width: 100%; border: 3px solid #333; border-radius: 8px; overflow: hidden; background: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        
+        /* সামনের ক্যামেরা ব্যবহার করলে ভিডিও মিরর (আয়নার মতো) দেখানোর জন্য ক্লাসের ব্যবস্থা */
+        video { width: 100%; max-width: 500px; display: block; margin: auto; transition: transform 0.3s ease; }
+        .mirror { transform: scaleX(-1); } 
+        
+        .overlay { position: absolute; bottom: 10px; left: 10px; right: 10px; background: rgba(0, 0, 0, 0.7); color: #fff; padding: 10px; border-radius: 6px; font-size: 14px; text-align: left; line-height: 1.6; font-family: monospace; }
+        
+        .btn-group { margin-top: 15px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+        button { padding: 12px 20px; font-size: 15px; font-weight: bold; color: white; border: none; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: 0.2s; }
+        
+        .btn-capture { background-color: #ea4335; }
+        .btn-capture:hover { background-color: #d33426; }
+        .btn-switch { background-color: #4CAF50; }
+        .btn-switch:hover { background-color: #388E3C; }
+        .btn-download { background-color: #0078A8; display: none; }
+        .btn-download:hover { background-color: #005f86; }
+        
+        canvas { display: none; width: 100%; max-width: 500px; margin: 20px auto; border: 3px solid #0078A8; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        .app-title { color: #0078A8; font-weight: bold; font-size: 24px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="app-title">📷 SHM-GPS-Cam</div>
+    
+    <div class="camera-container" style="max-width: 500px; margin: auto;">
+        <video id="video" autoplay playsinline></video>
+        <div id="locationOverlay" class="overlay">জিপিএস ও ক্যামেরা চালু হচ্ছে...</div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn-switch" onclick="toggleCamera()">🔄 ক্যামেরা ঘোরান</button>
+        <button class="btn-capture" onclick="takePhoto()">📸 ছবি তুলুন</button>
+        <button id="downloadBtn" class="btn-download" onclick="downloadPhoto()">⬇️ ডাউনলোড</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const video = document.getElementById('video');
+        const overlay = document.getElementById('locationOverlay');
+        const canvas = document.getElementById('canvas');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const ctx = canvas.getContext('2d');
+        
+        let currentLat = "Searching...";
+        let currentLng = "Searching...";
+        let placeName = "Searching location...";
+        let lastLat = "";
+        
+        // ক্যামেরা কন্ট্রোল করার ভেরিয়েবল
+        let useFrontCamera = false; // ডিফল্টভাবে পেছনের ক্যামেরা চালু থাকবে
+        let currentStream = null;
+
+        // ১. ক্যামেরা চালু করার ফাংশন
+        function startCamera() {
+            // যদি আগে থেকে কোনো ক্যামেরা চালু থাকে, তবে সেটি বন্ধ করে দেওয়া
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+
+            // সামনের নাকি পেছনের ক্যামেরা চলবে তা নির্ধারণ করা
+            const constraints = {
+                video: {
+                    facingMode: useFrontCamera ? "user" : "environment"
+                }
+            };
+
+            // সামনের ক্যামেরা হলে ভিডিওকে আয়নার মতো (মিরর) করে দেওয়া
+            if (useFrontCamera) {
+                video.classList.add('mirror');
+            } else {
+                video.classList.remove('mirror');
+            }
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => {
+                    currentStream = stream;
+                    video.srcObject = stream;
+                })
+                .catch(err => {
+                    overlay.innerHTML = "ক্যামেরা পারমিশন দেওয়া হয়নি বা ক্যামেরা পাওয়া যাচ্ছে না!";
+                    alert("ক্যামেরা চালু করা যাচ্ছে না। পারমিশন চেক করুন।");
+                });
+        }
+
+        // ক্যামেরা পরিবর্তন করার বাটন ক্লিক ফাংশন
+        function toggleCamera() {
+            useFrontCamera = !useFrontCamera; // অবস্থা উল্টে দেওয়া (true থাকলে false, false থাকলে true)
+            startCamera(); // নতুন অবস্থায় ক্যামেরা আবার চালু করা
+        }
+
+        // পেজ লোড হওয়ার সাথে সাথে ক্যামেরা চালু করা
+        startCamera();
+
+        // ২. জিপিএস লোকেশন বের করা (আগের মতোই)
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(
+                async position => {
+                    currentLat = position.coords.latitude.toFixed(5);
+                    currentLng = position.coords.longitude.toFixed(5);
+                    updateOverlay(); 
+
+                    if (currentLat !== lastLat) {
+                        lastLat = currentLat;
+                        try {
+                            const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${currentLat}&longitude=${currentLng}&localityLanguage=en`);
+                            const data = await res.json();
+                            placeName = (data.locality || data.city || data.principalSubdivision || "Unknown Area") + ", " + (data.countryName || "");
+                            updateOverlay();
+                        } catch (e) {
+                            placeName = "Area name not found";
+                        }
+                    }
+                },
+                error => {
+                    overlay.innerHTML = "জিপিএস সিগন্যাল পাওয়া যাচ্ছে না। ঘরের বাইরে চেষ্টা করুন।";
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        // লাইভ স্ক্রিনে তথ্য আপডেট করা
+        function updateOverlay() {
+            const timeNow = new Date().toLocaleString('en-US');
+            overlay.innerHTML = `<span style="color:#FFD700; font-weight:bold;">📷 SHM-GPS-Cam</span><br>📍 ${placeName}<br>🌍 Lat: ${currentLat}, Lng: ${currentLng}<br>🕒 Time: ${timeNow}`;
+        }
+
+        // ৩. ছবি তোলা এবং ক্যানভাসে স্ট্যাম্প বসানো
+        function takePhoto() {
+            if(video.videoWidth === 0) {
+                alert("ক্যামেরা প্রস্তুত নয়, অনুগ্রহ করে অপেক্ষা করুন।");
+                return;
+            }
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // সামনের ক্যামেরা দিয়ে ছবি তুললে সেটি উল্টো (মিররড) আসে, তাই সোজা করে ক্যানভাসে আঁকার লজিক
+            if (useFrontCamera) {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // মিরর ইফেক্ট বন্ধ করে দেওয়া যাতে লেখাগুলো উল্টো না হয়ে যায়
+            if (useFrontCamera) {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+            }
+            
+            const timeNow = new Date().toLocaleString('en-US');
+            
+            const boxHeight = 115; 
+            ctx.fillStyle = "rgba(0, 0, 0, 0.6)"; 
+            ctx.fillRect(10, canvas.height - boxHeight - 10, canvas.width - 20, boxHeight);
+            
+            ctx.fillStyle = "white"; 
+            ctx.font = "16px monospace"; 
+            
+            const startY = canvas.height - boxHeight + 20;
+            
+            ctx.fillStyle = "#FFD700"; 
+            ctx.fillText(`Camera: SHM-GPS-Cam`, 20, startY);
+            
+            ctx.fillStyle = "white"; 
+            ctx.fillText(`Place : ${placeName}`, 20, startY + 25);
+            ctx.fillText(`GPS   : Lat ${currentLat}, Lng ${currentLng}`, 20, startY + 50);
+            ctx.fillText(`Time  : ${timeNow}`, 20, startY + 75);
+            
+            canvas.style.display = "block";
+            downloadBtn.style.display = "inline-block";
+        }
+
+        // ৪. ছবি ডাউনলোড করা
+        function downloadPhoto() {
+            const link = document.createElement('a');
+            link.download = `SHM-GPS-Cam_${new Date().getTime()}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+        }
+    </script>
+    <!-- Footer inside Panel -->
+            <div class="panel-footer" style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 20px; margin-top: 35px; flex-wrap: wrap; gap: 15px;">
+                
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <!-- লোগোর সাইজ কঠোরভাবে 32px করে দেওয়া হয়েছে -->
+                    <img src="logo.png" alt="SHM Logo" style="width: 32px; height: 32px; object-fit: contain;">
+                    
+                    <span style="color: #94a3b8; font-size: 14px;">
+                        &copy; <a href="https://www.shmwb.in" style="color: #4ade80; text-decoration: none; font-weight: 600;">shmwb.in</a>. All Rights Reserved.
+                    </span>
+                </div>
+
+                <div>
+                    <!-- ভিজিটর ব্যাজ -->
+                    <img src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2Fwww.shmwb.in&label=SITE%20VISITORS&labelColor=%232d3748&countColor=%23007bff" alt="Site Visitors" style="height: 25px; border-radius: 4px;">
+                </div>
+                
+            </div>
+</body>
+</html>
